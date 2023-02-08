@@ -159,7 +159,7 @@ int duplacation(string readf1, string readf2)
 
 {
 
-
+    int tg = 0;
     const char* cf1 = readf1.data();
     const char* cf2 = readf2.data();
     ifstream fin1(cf1);
@@ -213,14 +213,15 @@ int duplacation(string readf1, string readf2)
 
 
     }
-    for (std::map<string, string>::iterator it = mymap.begin(); it != mymap.end(); ++it){
+    for (std::map<string, string>::iterator it = mymap.begin(); it != mymap.end(); ++it) {
+        tg++;
         outfile << it->second << endl;
         outfile << it->first << endl;
     }
     outfile << ft1 << endl;
     outfile << ft2 << endl;
 
-    return 0;
+    return tg;
 
 
 }
@@ -238,11 +239,11 @@ int main(int argc, char* argv[])
     string n2 = argv[2];
 
     cout << "step1: start remove duplacation " << endl;
-    duplacation(n1, n2);
+    int tg=duplacation(n1, n2);
     cout << "step2: start cut reads" << endl;
 
 
-    
+
     string step1 = "step1_";
     step1.append(n2);
     const char* df2 = step1.data();
@@ -265,9 +266,10 @@ int main(int argc, char* argv[])
     int dd = 0;
     int temp = 0;
     string name;
+    int tg2 = 0;
 
 
-
+    
 
     while (getline(file, strLine))
     {
@@ -276,12 +278,12 @@ int main(int argc, char* argv[])
         char rr2[160] = "0";
         char result[160] = "0";
         char quality[160] = "0";
-      
+
         hs++;
         if (hs % 2 == 0) {
-            name = strLine;         
+            name = strLine;
         }
-        else{
+        else {
             temp = 0;
             for (int i = 0; i < strLine.length(); i++) {
                 if (strLine[i] != ' ') {
@@ -301,17 +303,18 @@ int main(int argc, char* argv[])
             if (dd < 35) {
                 continue;
             }
+            tg2++;
 
             for (int i = 0; i < dd; i++) {
                 result[i] = rr2[i];
-                quality[i] ='I';
+                quality[i] = 'I';
             }
             outfile << name << endl;
             outfile << result << endl;
             outfile << "+" << endl;
             outfile << quality << endl;
         }
-        
+
         if (hs % 100000 == 0) {
             cout << "cut reads : " << hs << endl;    //测下速度
         }
@@ -322,6 +325,10 @@ int main(int argc, char* argv[])
 
     string fileName = step1;
     int result = remove(fileName.c_str());
+
+    cout << "complete cut gps,congratulation!" << endl;
+    cout << "去重后reads数为："<<tg << endl;
+    cout << "cut后长度大于34的reads数为：" << tg2 << endl;
     return 0;
 
 }
