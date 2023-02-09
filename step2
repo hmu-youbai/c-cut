@@ -1,0 +1,207 @@
+#define _CRT_SECURE_NO_WARNINGS
+#include <stdio.h>
+#include <string.h>
+#include <stdlib.h>
+#include <vector>
+#include <algorithm> 
+#include <iostream>
+#include<string>
+#include <map>
+#include<fstream>
+#include <cstdio>
+#include <sstream>
+using namespace std;
+
+
+
+struct samfile
+{
+	string name;
+	int unique;
+	int relen;
+
+	int trend[30];
+	string chr[30];
+	int pos[30];
+};
+
+
+
+
+
+
+
+
+
+
+
+
+
+int extsam(string step1sam, string step1r1r2) {
+
+
+
+	
+ //   string step1sam = "zhijieqie.sam";
+	//string step1r1r2 = "step1_CGS-2.clean.fq";
+
+
+
+
+
+	
+	const char* df2 = step1sam.data();
+	std::map<string, samfile> myread;
+
+	ifstream file;
+	file.open(df2, ios::in);
+	std::string strsam;
+	
+	int temp;
+	string name;
+	int trend;
+	string chr;
+	int pos;
+	int relen;
+
+	while (getline(file, strsam)) {
+		if (strsam[0] == '@') {
+			continue;
+		}
+		samfile sf;
+		string word;
+		stringstream ss;
+		ss << strsam;
+		temp = 0;
+		while (ss >> word) {
+			if (temp == 0) {
+				name = word;
+			}
+			if (temp == 1) {
+				std::istringstream hh(word);
+				hh >> trend;
+				if (trend == 4) {
+					break;
+				}
+			}
+			if (temp == 2) {
+				chr = word;
+			}
+			if (temp == 3) {
+				std::istringstream hh(word);
+				hh >> pos;
+
+			}
+			if (temp == 9) {
+				relen = word.length();
+				sf.name = name;
+				sf.relen = relen;
+
+				if (myread.find(name) == myread.end()) {
+					sf.unique = 0;
+					sf.trend[0] = trend;
+					sf.chr[0] = chr;
+					sf.pos[0] = pos;
+					myread[name] = sf;
+				}
+				else {
+					myread[name].unique++;
+					int temp_num = myread[name].unique;
+					myread[name].trend[temp_num] = trend;
+					myread[name].chr[temp_num] = chr;
+					myread[name].pos[temp_num] = pos;
+				}
+				break;
+
+			}
+
+			temp++;
+		}
+	}
+
+
+
+	ifstream file2;
+	const char* df3 = step1r1r2.data();
+	file2.open(df3, ios::in);
+	std::string strsam2;
+
+	ofstream outsam;
+	outsam.open("outsam", ios::out);
+	temp = 0;
+
+	while (getline(file2, strsam2)) {
+		temp++;	
+		if (temp % 2 == 1) {
+			char temp_name[200] = "0";
+			for (int i = 1; i < strsam2.length(); i++) {
+				if (strsam2[i] == ' ') {
+					break;
+				}
+				temp_name[i - 1] = strsam2[i];
+			}
+			name = temp_name;			
+		}
+		else {
+			if (myread.find(name) == myread.end()) {
+				continue;
+			}
+			outsam << name << " "<<strsam2<<" ";
+			int temp_num = myread[name].unique;
+			outsam << temp_num<<" "<<myread[name].relen<<" ";
+			for (int i = 0; i < temp_num + 1; i++) {
+
+				outsam << myread[name].trend[i]<<" " << myread[name].chr[i]<<" " << myread[name].pos[i]<<" ";
+
+			
+			}
+			outsam << endl;
+			
+
+		}
+		
+
+
+
+	
+	
+	
+	
+	
+	}
+
+
+
+
+
+
+
+
+	return 0;
+
+
+}
+
+
+
+
+int main(int argc, char* argv[]){
+	if (argc != 3) {
+		cout << "please input read1 and read2 files!" << endl;
+		return 0;
+	}
+	string n1 = argv[1];
+
+	string n2 = "step1_";
+	n2.append(argv[2]);
+
+
+	cout << "step1:start read alignment file "<<endl;
+	extsam(n1,n2);
+	cout << "step2:start read reference" << endl;
+	return 0;
+
+
+
+}
+
