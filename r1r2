@@ -261,7 +261,7 @@ int main(int argc, char* argv[])
 
     string step3 = "cut_";
     step3.append(n1);
-    const char* df4 = step2.data();
+    const char* df4 = step3.data();
 
 
     ofstream outfile2;
