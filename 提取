@@ -1,0 +1,924 @@
+#define _CRT_SECURE_NO_WARNINGS
+#include <stdio.h>
+#include <string.h>
+#include <stdlib.h>
+#include <vector>
+#include <algorithm>
+#include <iostream>
+#include<string>
+#include <map>
+#include<fstream>
+#include <cstdio>
+#include <sstream>
+#include <iostream>
+#include <string.h>
+#include <tuple>
+#include "ssw_cpp.h"
+
+using std::string;
+using std::cout;
+using std::endl;
+using std::ifstream;
+using std::ios;
+using std::min;
+using std::max;
+using std::ofstream;
+using std::stringstream;
+
+
+
+struct samfile
+{
+    string name;
+    int unique;
+    int relen;
+    int trend[30];
+    string chr[30];
+    int pos[30];
+    string quality[30];
+};
+int mindistance_ga(std::string word1, std::string word2) {
+    int m = word1.length(), n = word2.length();
+    std::vector<std::vector<int>> dp(m + 1, std::vector<int>(n + 1, 0));
+    for (int i = 1; i <= m; ++i)
+        dp[i][0] = i;
+    for (int j = 1; j <= n; ++j)
+        dp[0][j] = j;
+    for (int i = 1; i <= m; ++i)
+        for (int j = 1; j <= n; ++j) {
+            if (word2[j - 1] == word1[i - 1] || (word2[j - 1] == 'A' && word1[i - 1] == 'G'))
+                dp[i][j] = dp[i - 1][j - 1];
+            else
+                dp[i][j] = std::min(dp[i - 1][j - 1], std::min(dp[i][j - 1], dp[i - 1][j])) + 1;
+        }
+    return dp[m][n];
+}
+StripedSmithWaterman::Alignment getali(string ref ,string query ){
+    int32_t maskLen = strlen(query.c_str())/2;
+    maskLen = maskLen < 15 ? 15 : maskLen;
+    StripedSmithWaterman::Aligner aligner(1,5,5,5);
+    StripedSmithWaterman::Filter filter;
+    StripedSmithWaterman::Alignment alignment;
+    aligner.Align(query.c_str(), ref.c_str(), ref.size(), filter, &alignment, maskLen);
+    return alignment;
+}
+
+//temp_read：fq中的read   temp_ref：与fq中同向的ref               real_read  与fq中同向且带_+cut的read real_ref同理    add2_read:readl_read  去掉_版本   add2_ref: 同理+NN
+
+string re_complement(string dna) {
+    int len = dna.length();
+    string res = dna;
+    for (int i = 0; i < len; i++) {
+        switch (dna[i]) {
+            case 'A':res[i] = 'T'; break;
+            case 'T':res[i] = 'A'; break;
+            case 'G':res[i] = 'C'; break;
+            case 'C':res[i] = 'G'; break;
+        }
+    }
+    reverse(res.begin(), res.end());
+    return res;
+}
+
+
+string XM(string read1, string ref1) {//add2_read  add2_ref
+    string xm1;
+    for (int i = 0; i < read1.length(); i++) {
+        if (read1[i] == 'C' && ref1[i] == 'C') {
+            if (ref1[i + 1] == 'G') {
+                xm1 += "Z";
+
+            }
+            else if (ref1[i + 1] == '_' || ref1[i + 2] == '_' || ref1[i + 1] == 'N' || ref1[i + 2] == 'N') {
+                xm1 += "U";
+            }
+            else if (ref1[i + 2] == 'G') {
+                xm1 += "X";
+            }
+            else {
+                xm1 += "H";
+            }
+        }
+        else if (read1[i] == 'T' && ref1[i] == 'C') {
+            if (ref1[i + 1] == 'G') {
+                xm1 += "z";
+            }
+            else if (ref1[i + 1] == '_' || ref1[i + 2] == '_' || ref1[i + 1] == 'N' || ref1[i + 2] == 'N') {
+                xm1 += "u";
+            }
+            else if (ref1[i + 2] == 'G') {
+                xm1 += "x";
+            }
+            else {
+                xm1 += "h";
+            }
+        }
+        else {
+            xm1 += ".";
+        }
+    }
+    return xm1;
+}
+
+
+string re_XM(string read1, string ref1) {
+    string xm1;
+    for (int i = 0; i < read1.length(); i++) {
+        if (read1[i] == 'G' && ref1[i + 2] == 'G') {
+            if (ref1[i + 1] == 'C') {
+                xm1 += "Z";
+            }
+            else if (ref1[i + 1] == '_' || ref1[i] == '_' || ref1[i + 1] == 'N' || ref1[i] == 'N') {
+                xm1 += "U";
+            }
+            else if (ref1[i] == 'C') {
+                xm1 += "X";
+            }
+            else {
+                xm1 += "H";
+            }
+        }
+        else if (read1[i] == 'A' && ref1[i + 2] == 'G') {
+            if (ref1[i + 1] == 'C') {
+                xm1 += "z";
+            }
+            else if (ref1[i + 1] == '_' || ref1[i] == '_' || ref1[i + 1] == 'N' || ref1[i] == 'N') {
+                xm1 += "u";
+            }
+            else if (ref1[i] == 'C') {
+                xm1 += "x";
+            }
+            else {
+                xm1 += "h";
+            }
+        }
+        else {
+            xm1 += ".";
+        }
+    }
+    return xm1;
+}
+
+
+std::tuple<std::string, std::string, std::string>  MD_NM_mdi(string real_read, string real_ref) {
+    int temp = 0;
+    string result = "MD:Z:";
+    int nm_num = 0;
+    string nm_str = "NM:i:";
+    int mdi_num = 0;
+    string mdi_str;
+    string mdi_temp = "M";
+
+    for (int i = 0; i < real_read.length(); i++) {
+        if (real_read[i] == real_ref[i]) {
+            temp++;
+            if (mdi_temp == "M") {
+                mdi_num++;
+            }
+            else {
+                mdi_str += std::to_string(mdi_num);
+                mdi_str += mdi_temp;
+                mdi_temp = "M";
+                mdi_num = 1;
+            }
+        }
+        else if (real_ref[i] == '_') {
+            nm_num++;
+            if (mdi_temp == "I") {
+                mdi_num++;
+            }
+            else {
+                mdi_str += std::to_string(mdi_num);
+                mdi_str += mdi_temp;
+                mdi_temp = "I";
+                mdi_num = 1;
+            }
+        }
+        else if (real_read[i] == '_') {
+            nm_num++;
+            if (real_read[i - 1] == '_') {
+                result += real_ref[i];
+                temp = 0;
+            }
+            else {
+                result += std::to_string(temp);
+                result += "^";
+                result += real_ref[i];
+                temp = 0;
+            }
+            if (mdi_temp == "D") {
+                mdi_num++;
+            }
+            else {
+                mdi_str += std::to_string(mdi_num);
+                mdi_str += mdi_temp;
+                mdi_temp = "D";
+                mdi_num = 1;
+            }
+        }
+        else {
+            nm_num++;
+            result += std::to_string(temp);
+            result += real_ref[i];
+            temp = 0;
+            if (mdi_temp == "M") {
+                mdi_num++;
+            }
+            else {
+                mdi_str += std::to_string(mdi_num);
+                mdi_str += mdi_temp;
+                mdi_temp = "M";
+                mdi_num = 1;
+            }
+        }
+    }
+    result += std::to_string(temp);
+    nm_str += std::to_string(nm_num);
+    mdi_str += std::to_string(mdi_num);
+    mdi_str += mdi_temp;
+    std::tuple <std::string, std::string, std::string>  fff{ result,nm_str,mdi_str };
+    return fff;
+}
+
+
+std::tuple<std::string, std::string, std::string, std::string>  trans(string t1, string query, string ref, int read_begin, int ref_begin, int ref_end) {
+
+    string js = "";
+    int read_num = read_begin;
+    int ref_num = ref_begin;
+    string result_read;  //real_read
+    string result_ref;
+    string result_ref_num2;
+    string result_read_num2;
+
+
+
+    string space;
+    for (char i : t1) {
+        if (i == 'S') {
+            js = "";
+        }
+        else if (i == 'X' || i == '=') {
+            int num = 0;
+            std::istringstream jss(js);
+            jss >> num;
+
+            result_read += query.substr(read_num, num);
+            result_ref += ref.substr(ref_num, num);
+            result_read_num2 += query.substr(read_num, num);
+            result_ref_num2 += ref.substr(ref_num, num);
+            read_num += num;
+            ref_num += num;
+            js = "";
+        }
+        else if (i == 'D') {
+            int num = 0;
+            std::istringstream jss(js);
+            jss >> num;
+
+            result_read += space.assign(num, '_');
+            result_ref += ref.substr(ref_num, num);
+            ref_num += num;
+            js = "";
+        }
+        else if (i == 'I') {
+            int num = 0;
+            std::istringstream jss(js);
+            jss >> num;
+            result_ref += space.assign(num, '_');
+            result_read += query.substr(read_num, num);
+            result_read_num2 += query.substr(read_num, num);
+            result_ref_num2 += space.assign(num, '_');
+            read_num += num;
+            js = "";
+        }
+        else {
+            js += i;
+        }
+    }
+    if (ref_end < ref.length() - 1) {
+        result_ref_num2 += ref[ref_end + 1];
+        if (ref_end < ref.length() - 2) {
+            result_ref_num2 += ref[ref_end + 2];
+        }
+        else {
+            result_ref_num2 += "N";
+        }
+    }
+    else {
+        result_ref_num2 += "NN";
+    }
+
+    std::tuple <std::string, std::string, std::string, std::string>  fff{ result_read,result_ref,result_read_num2,result_ref_num2 };
+    return fff;
+
+}
+
+
+string get_sam(string real_read1, string real_ref, string add2_read, string add2_ref, string temp_read1,  string temp_name, int temp_trend, string temp_chr, int temp_pos, int temp_ali_query_begin, int temp_ali_query_end, int temp_ali_ref_begin, int temp_ali_ref_end, int temp_reallen) {
+
+
+    string mdi0;
+    string NM0;
+    string MD0;
+    string xm0;
+
+
+    string nI ;
+    string result = temp_name + "\t" + std::to_string(temp_trend) + "\t" + temp_chr + "\t";
+    if (temp_trend % 256 == 0) {
+
+
+        xm0 = XM(add2_read, add2_ref);
+        std::tie(MD0, NM0, mdi0) = MD_NM_mdi(real_read1, real_ref);
+
+
+
+        result = result + std::to_string(temp_ali_ref_begin + temp_pos) + "\t255\t" + mdi0 + "\t*\t0\t0\t" + temp_read1.substr(temp_ali_query_begin, temp_ali_query_end - temp_ali_query_begin + 1) + "\t"
+                 + nI.assign(temp_ali_query_end - temp_ali_query_begin + 1, 'I') + "\tNM:" + NM0 + "\tMD:Z:" + MD0 + "\tXM:Z:" + xm0 + "\tXR:Z:CT\tXG:Z:CT";
+
+
+
+    }
+    else {
+
+
+        xm0 = re_XM(re_complement(add2_read), re_complement(add2_ref));
+        std::tie(MD0, NM0, mdi0) = MD_NM_mdi(re_complement(real_read1), re_complement(real_ref));
+
+
+        result = result + std::to_string(temp_pos - temp_ali_ref_end + temp_reallen - 1) + "\t255\t" + mdi0 + "\t*\t0\t0\t" + re_complement(temp_read1.substr(temp_ali_query_begin, temp_ali_query_end - temp_ali_query_begin + 1)) + "\t"
+                 + nI.assign(temp_ali_query_end - temp_ali_query_begin + 1, 'I') + "\tNM:" + NM0 + "\tMD:Z:" + MD0 + "\tXM:Z:" + xm0 + "\tXR:Z:CT\tXG:Z:GA";
+
+
+
+
+    }
+
+    return result;
+
+
+
+
+}
+
+
+
+
+int extsam(const string& step1sam, const string& step1r1r2) {
+    //   string step1sam = "zhijieqie.sam";
+    //string step1r1r2 = "step1_CGS-2.clean.fq";
+
+
+    const char* df2 = step1sam.data();
+    std::map<string, samfile> myread;
+
+    ifstream file;
+    file.open(df2, ios::in);
+    std::string strsam;
+
+    int temp;
+    string name;
+    int trend;
+    string chr;
+    int pos;
+    int relen;
+    string quality;
+
+    while (getline(file, strsam)) {
+        if (strsam[0] == '@') {
+            continue;
+        }
+        samfile sf;
+        string word;
+        stringstream ss;
+        ss << strsam;
+        temp = 0;
+        while (ss >> word) {
+            if (temp == 0) {
+                name = word;
+            }
+            if (temp == 1) {
+                std::istringstream hh(word);
+                hh >> trend;
+                if (trend == 4) {
+                    break;
+                }
+            }
+            if (temp == 2) {
+                chr = word;
+            }
+            if (temp == 3) {
+                std::istringstream hh(word);
+                hh >> pos;
+
+            }
+            if (temp == 5) {
+
+                string js;
+                int temp_real = 0;
+                for (char i : word) {
+                    if (i == 'M' || i == 'D') {
+                        int num = 0;
+                        std::istringstream jss(js);
+                        jss >> num;
+                        temp_real += num;
+                        js = "";
+
+                    }
+                    else if (i == 'I') {
+                        js = "";
+                    }
+                    else {
+                        js += i;
+                    }
+                }
+
+                quality= std::to_string(temp_real);
+
+
+
+            }
+            if (temp == 9) {
+                relen = word.length();
+                sf.name = name;
+                sf.relen = relen;
+
+                if (myread.find(name) == myread.end()) {
+                    sf.unique = 0;
+                    sf.trend[0] = trend;
+                    sf.chr[0] = chr;
+                    sf.pos[0] = pos;
+                    sf.quality[0] = quality;
+                    myread[name] = sf;
+                }
+                else {
+                    myread[name].unique++;
+                    int temp_num = myread[name].unique;
+                    myread[name].trend[temp_num] = trend;
+                    myread[name].chr[temp_num] = chr;
+                    myread[name].pos[temp_num] = pos;
+                    myread[name].quality[temp_num] = quality;
+                }
+                break;
+
+            }
+
+            temp++;
+        }
+    }
+
+
+
+    ifstream file2;
+    const char* df3 = step1r1r2.data();
+    file2.open(df3, ios::in);
+    std::string strsam2;
+
+    ofstream outsam;
+    outsam.open("outsam", ios::out);
+    temp = 0;
+
+    while (getline(file2, strsam2)) {
+        temp++;
+        if (temp % 2 == 1) {
+            char temp_name[200] = "0";
+            for (int i = 1; i < strsam2.length(); i++) {
+                if (strsam2[i] == ' ') {
+                    break;
+                }
+                temp_name[i - 1] = strsam2[i];
+            }
+            name = temp_name;
+        }
+        else {
+            if (myread.find(name) == myread.end()) {
+                continue;
+            }
+            outsam << name << " "<<strsam2<<" ";
+            int temp_num = myread[name].unique;
+            outsam << temp_num<<" "<<myread[name].relen<<" ";
+            for (int i = 0; i < temp_num + 1; i++) {
+
+                outsam << myread[name].trend[i]<<" " << myread[name].chr[i]<<" " << myread[name].pos[i]<<" "<<myread[name].quality[i]<<" ";
+
+
+            }
+            outsam << endl;
+
+
+        }
+
+
+
+
+
+
+
+
+
+    }
+
+
+
+
+
+
+
+
+    return 0;
+
+
+}
+
+////编译时加入主函数，测试时不必重复运行
+
+
+bool GetData(std::map<string, string> &myref,const string& reffile){
+    const char *ef1 = reffile.data();
+    ifstream file;
+    file.open(ef1, ios::in);
+    std::string strref;
+    string temp_ref = "test";
+    string temp_rchr = "test";
+    while (getline(file, strref)) {
+        if (strref[0] == '>') {
+            myref[temp_rchr] = temp_ref;
+            temp_rchr="";
+            temp_ref ="";
+            for (int i = 1; i < strref.length(); i++) {
+                if (strref[i] == ' ') {
+                    break;
+                }
+                temp_rchr+=strref[i];
+            }
+        }
+        else {
+            transform(strref.begin(), strref.end(), strref.begin(), ::toupper);
+            temp_ref += strref;
+        }
+    }
+    myref[temp_rchr] = temp_ref;
+}
+
+
+
+
+int main(int argc, char* argv[])
+{
+    if (argc != 4) {
+        cout << "please input read1 , read2  and  sam_file files!" << endl;
+        return 0;
+    }
+    string n1 = argv[1];
+    string n2 = argv[2];
+    string n3 = argv[3];
+
+    string step1 = "step1_";
+    step1.append(n2);
+    extsam(n3,step1);
+
+
+
+    std::map<string, string> myref;
+    string reffile = "mm9_lambda.fa";
+    GetData(myref,reffile);
+    cout<<"Reference reading completed"<<endl;
+
+
+
+//    string step2 = "cut_";
+//    step2.append(n2);
+//    const char* df3 = step2.data();
+//
+//    ofstream outfile;
+//    outfile.open(df3, ios::out);
+
+    string step2 = "step2_";
+    step2.append(n2);
+
+    const char* ex3 = step2.data();
+    ifstream file2;
+    file2.open(ex3, ios::in);   //测试代码
+    std::string strsam2;
+
+
+
+
+
+    string step2_out = n1;
+    step2_out+=".sam";
+    const char* ex4 = step2_out.data();
+
+
+    ofstream outfile;;
+    outfile.open(ex4, ios::out);
+
+
+
+
+
+
+
+    ////////开始主体部分////////////////////////////////////////
+    int temp;
+    string temp_name;
+    string temp_read1;
+    string temp_read2;
+    string re_read2;
+    int temp_num;
+    int temp_len;
+    string temp_AGCT;
+    string temp_swref;
+
+
+    int cd = 0;
+    while (getline(file2, strsam2)) {
+        cd++;/////////////////////////测试
+
+        if (cd % 10000 == 0) {
+            cout << "complete reads :  " <<cd<< endl; //测试代码
+        }
+        temp = 0;
+        string word;
+        stringstream ss;
+        ss << strsam2;
+
+
+
+        //每次大循环刷新的变量
+        StripedSmithWaterman::Alignment temp_ali[30];
+        StripedSmithWaterman::Alignment temp_ali2[30];
+        int temp_trend[30];
+        string temp_chr[30];
+        int temp_pos[30];
+        int temp_quality[30];
+
+
+        string qref1[30];
+        string qref2[30];
+
+
+
+
+
+        //开始每次大循环对应的里循环
+        while (ss >> word) {
+            if (temp == 0) {
+                temp_name = word;
+            }
+            if (temp == 1) {
+                temp_read1 = word;
+            }
+            if (temp == 2) {
+                temp_read2 = word;
+            }
+            if (temp == 3) {
+                std::istringstream hh(word);
+                hh >> temp_num;
+            }
+            if (temp == 4) {
+                std::istringstream hh(word);
+                hh >> temp_len;
+
+                if (temp_read2.length() - temp_len > 34) {
+                    re_read2 = temp_read2.substr(temp_len, temp_read2.length() - temp_len);
+                    re_read2 = re_complement(re_read2);
+                }
+            }
+
+
+            if (temp > 4) {//开始数组记录模式
+
+
+                if (temp % 4 == 1) {
+                    std::istringstream hh(word);
+                    hh >> temp_trend[int(temp / 4) - 1];
+                }
+                if (temp % 4 == 2) {
+                    temp_chr[int(temp / 4) - 1] = word;
+
+                }
+                if (temp % 4 == 3) {
+                    std::istringstream hh(word);
+                    hh >> temp_pos[int(temp / 4) - 1];
+                }
+                if (temp % 4 == 0) {
+
+
+
+                    std::istringstream hh(word);
+                    hh >> temp_quality[temp / 4 - 2];//特别注意 这里整除了减2
+
+
+                    int n4m2 = temp / 4 - 2;
+
+
+                    if (temp_trend[n4m2] % 256 == 0) {
+
+
+                        //需要备注
+                        //首先，sam文件的pos，为ref的起点（含），举例：如果pos为1，那么就是从chr的起点开始。所以c++中取ref时，下标从pos-1开始。
+                        temp_swref = myref[temp_chr[n4m2]].substr(temp_pos[n4m2] - 1, min(200,
+                                                                                          (int) myref[temp_chr[n4m2]].length() -
+                                                                                          temp_pos[n4m2] +
+                                                                                          1));//len-pos+1;
+                        qref1[n4m2] = temp_swref;
+                        temp_ali[n4m2] = getali(temp_swref, temp_read1);
+                        if (temp_read2.length() - temp_len > 34 && temp_num !=0) {
+
+                            temp_swref = myref[temp_chr[n4m2]].substr(temp_pos[n4m2] - 1, min(2000,
+                                                                                              (int) myref[temp_chr[n4m2]].length() -
+                                                                                              temp_pos[n4m2] + 1));
+                            qref2[n4m2] = temp_swref;
+                            temp_ali2[n4m2] = getali(temp_swref, re_read2);
+                        }
+
+
+                    } else {
+                        //终点的位置=pos+real-1（含）
+                        //终点的下标=pos+real-2（含）
+                        //从终点向前取x
+                        //起点的位置=终点的位置-x+1（含）
+                        //起点的下标=终点的位置-x（含）   即pos+real-1-x
+                        //如果起点下标为y   起点位置为y+1
+                        //那么长度为 终点的位置-起点的位置+1      即pos+real-1-y-1+1=pos+real-1-y
+
+                        temp_swref = myref[temp_chr[n4m2]].substr(max(temp_pos[n4m2] + temp_quality[n4m2] - 1 - 200, 0),
+                                                                  temp_pos[n4m2] + temp_quality[n4m2] - 1 -
+                                                                  max(temp_pos[n4m2] + temp_quality[n4m2] - 1 - 200,
+                                                                      0));
+
+                        temp_swref = re_complement(temp_swref);
+                        qref1[n4m2] = temp_swref;      //保证了qref1中的ref与fq文件中的read同向
+                        temp_ali[n4m2] = getali(temp_swref, temp_read1);
+
+
+                        if (temp_read2.length() - temp_len > 34&& temp_num !=0) {     //如果茎过短，read2剩余部分有回收和利用的价值
+
+                            temp_swref = myref[temp_chr[n4m2]].substr(
+                                    max(temp_pos[n4m2] + temp_quality[n4m2] - 1 - 2000, 0),
+                                    temp_pos[n4m2] + temp_quality[n4m2] - 1 -
+                                    max(temp_pos[n4m2] + temp_quality[n4m2] - 1 - 2000, 0));
+
+                            temp_swref = re_complement(temp_swref);
+                            qref2[n4m2] = temp_swref;
+                            temp_ali2[n4m2] = getali(temp_swref, re_read2);
+                        }
+                    }
+                }
+
+
+                if (temp == temp_num * 4 + 8) {//结束循环，完成判断和提取
+
+
+                    if (temp_num == 0) {
+
+                        string real_read1;
+                        string real_ref;
+                        string add2_read;
+                        string add2_ref;
+
+                        std::tie(real_read1, real_ref, add2_read, add2_ref) = trans(temp_ali[0].cigar_string,
+                                                                                    temp_read1, qref1[0],
+                                                                                    temp_ali[0].query_begin,
+                                                                                    temp_ali[0].ref_begin,
+                                                                                    temp_ali[0].ref_end);
+
+                        string result_str = get_sam(real_read1, real_ref, add2_read, add2_ref, temp_read1, temp_name,
+                                                    temp_trend[0], temp_chr[0], temp_pos[0],
+                                                    temp_ali[0].query_begin, temp_ali[0].query_end,
+                                                    temp_ali[0].ref_begin, temp_ali[0].ref_end, temp_quality[0]);
+
+
+                        outfile<<result_str<<endl;
+
+
+
+//                        if (temp_read2.length() - temp_len > 34) {
+//                            if (temp_ali2[0].query_end-temp_ali2[0].query_begin+1>29){
+//                                string real_read1_1;
+//                                string real_ref_1;
+//                                string add2_read_1;
+//                                string add2_ref_1;
+//
+//
+//                                std::tie(real_read1_1, real_ref_1, add2_read_1, add2_ref_1) = trans(temp_ali2[0].cigar_string,
+//                                                                                                    re_read2, qref2[0],
+//                                                                                                    temp_ali2[0].query_begin,
+//                                                                                                    temp_ali2[0].ref_begin,
+//                                                                                                    temp_ali2[0].ref_end);
+//
+//                                string result_str_1 = get_sam(real_read1_1, real_ref_1, add2_read_1, add2_ref_1, re_read2, temp_name+"_2",
+//                                                              temp_trend[0], temp_chr[0], temp_pos[0],
+//                                                              temp_ali2[0].query_begin, temp_ali2[0].query_end,
+//                                                              temp_ali2[0].ref_begin, temp_ali2[0].ref_end, temp_quality[0]);
+//
+//                                outfile<<result_str_1<<endl;
+//
+//                            }
+//                        }
+
+
+
+
+                    }
+//
+
+                    else {//非unique
+                        int scoren[30];
+                        int temp_score;
+                        string sc_read1;
+                        string sc_read2;
+                        int final_num;
+
+                        int sc_len=min(temp_read1.length(),temp_read2.length());
+
+                        for(int i=0;i<temp_num+1;i++){
+                            temp_score=0;
+                            temp_score+=temp_ali[i].sw_score;
+                            sc_read1=temp_read1.substr(temp_ali[i].query_end+1,sc_len-temp_ali[i].query_end-1);
+                            sc_read2=temp_read2.substr(temp_ali[i].query_end+1,sc_len-temp_ali[i].query_end-1);
+                            temp_score-= mindistance_ga(sc_read1,sc_read2);
+                            if(temp_read2.length() - temp_len > 34){
+                                temp_score+=temp_ali2[i].query_end-temp_ali2[i].query_begin;
+                            }
+                            scoren[i]=temp_score;
+                        }
+
+                        int max_sc=scoren[0];
+                        int max_index=0;
+                        for(int i=1;i<temp_num+1;i++){
+                            if(scoren[i]>max_sc){
+                                max_sc=scoren[i];
+                                max_index=i;
+                            }
+                        }
+                        final_num=max_index;
+
+
+
+
+                        string real_read1;
+                        string real_ref;
+                        string add2_read;
+                        string add2_ref;
+
+                        std::tie(real_read1, real_ref, add2_read, add2_ref) = trans(temp_ali[final_num].cigar_string,
+                                                                                    temp_read1, qref1[final_num],
+                                                                                    temp_ali[final_num].query_begin,
+                                                                                    temp_ali[final_num].ref_begin,
+                                                                                    temp_ali[final_num].ref_end);
+
+                        string result_str = get_sam(real_read1, real_ref, add2_read, add2_ref, temp_read1, temp_name,
+                                                    temp_trend[final_num], temp_chr[final_num], temp_pos[final_num],
+                                                    temp_ali[final_num].query_begin, temp_ali[final_num].query_end,
+                                                    temp_ali[final_num].ref_begin, temp_ali[final_num].ref_end, temp_quality[final_num]);
+
+
+                        outfile<<result_str<<endl;
+
+
+
+
+//                        if (temp_read2.length() - temp_len > 34) {
+//                            if (temp_ali2[final_num].query_end-temp_ali2[final_num].query_begin+1>29){
+//                                string real_read1_1;
+//                                string real_ref_1;
+//                                string add2_read_1;
+//                                string add2_ref_1;
+//
+//
+//                                std::tie(real_read1_1, real_ref_1, add2_read_1, add2_ref_1) = trans(temp_ali2[final_num].cigar_string,
+//                                                                                                    re_read2, qref2[final_num],
+//                                                                                                    temp_ali2[final_num].query_begin,
+//                                                                                                    temp_ali2[final_num].ref_begin,
+//                                                                                                    temp_ali2[final_num].ref_end);
+//
+//                                string result_str_1 = get_sam(real_read1_1, real_ref_1, add2_read_1, add2_ref_1, re_read2, temp_name+"_2",
+//                                                              temp_trend[final_num], temp_chr[final_num], temp_pos[final_num],
+//                                                              temp_ali2[final_num].query_begin, temp_ali2[final_num].query_end,
+//                                                              temp_ali2[final_num].ref_begin, temp_ali2[final_num].ref_end, temp_quality[final_num]);
+//
+//                                outfile<<result_str_1<<endl;
+//
+//                            }
+//                        }
+
+                    }
+
+
+                    break;
+                }
+
+
+            }
+            temp++;
+        }
+
+
+    }
+    return 0;
+
+
+}
